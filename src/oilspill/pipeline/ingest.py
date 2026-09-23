@@ -73,12 +73,13 @@ _DEFAULT_TIMEOUT: float = 60.0
 class CDSESettings(BaseSettings):
     """CDSE credentials, read from the environment (or a ``.env`` file).
 
-    Two auth modes (OAuth client preferred for server/demo use):
+    Two auth modes (account login preferred: user-bound tokens carry OData
+    download rights, while OAuth-client tokens may be download-restricted):
 
-    * ``CDSE_CLIENT_ID`` / ``CDSE_CLIENT_SECRET``: dashboard OAuth client
-      (``grant_type=client_credentials``).
     * ``CDSE_USER`` / ``CDSE_PASS``: Copernicus account login
       (``grant_type=password``, ``client_id=cdse-public``).
+    * ``CDSE_CLIENT_ID`` / ``CDSE_CLIENT_SECRET``: dashboard OAuth client
+      (``grant_type=client_credentials``), used when no account login is set.
 
     Credentials are never logged or printed by this module.
     """
@@ -192,10 +193,11 @@ def get_access_token(
 ) -> str:
     """Obtain a CDSE access token via Keycloak.
 
-    Two modes: OAuth client (``grant_type=client_credentials`` with
-    ``CDSE_CLIENT_ID`` / ``CDSE_CLIENT_SECRET``) preferred when configured,
-    else account login (``grant_type=password``, ``client_id=cdse-public``
-    with ``CDSE_USER`` / ``CDSE_PASS``). Explicit kwargs beat env vars.
+    Two modes: account login (``grant_type=password``, ``client_id=cdse-public``
+    with ``CDSE_USER`` / ``CDSE_PASS``) preferred when configured, because
+    user-bound tokens carry OData download rights; else OAuth client
+    (``grant_type=client_credentials`` with ``CDSE_CLIENT_ID`` /
+    ``CDSE_CLIENT_SECRET``). Explicit kwargs beat env vars.
     The returned token is short-lived (~10 minutes); callers that download
     large scenes should fetch a fresh token per download rather than caching
     it. Raises :class:`requests.HTTPError` on a non-2xx response and
@@ -207,18 +209,18 @@ def get_access_token(
     if user is None or password is None:
         user = user or settings.user
         password = password or settings.password
-    if client_id and client_secret:
-        token_data = {
-            "grant_type": "client_credentials",
-            "client_id": client_id,
-            "client_secret": client_secret,
-        }
-    elif user and password:
+    if user and password:
         token_data = {
             "grant_type": "password",
             "client_id": TOKEN_CLIENT_ID,
             "username": user,
             "password": password,
+        }
+    elif client_id and client_secret:
+        token_data = {
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
         }
     else:
         raise ValueError(

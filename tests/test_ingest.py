@@ -205,9 +205,12 @@ def test_get_access_token_client_credentials() -> None:
     assert "password" not in call["data"]
 
 
-def test_get_access_token_prefers_client_credentials_over_password(
+def test_get_access_token_prefers_password_over_client_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """User-bound tokens carry OData download rights, so account login wins."""
+    monkeypatch.setenv("CDSE_USER", "env-user@example.com")
+    monkeypatch.setenv("CDSE_PASS", "env-secret")
     monkeypatch.setenv("CDSE_CLIENT_ID", "env-client-id")
     monkeypatch.setenv("CDSE_CLIENT_SECRET", "env-client-secret")
     fixture = _load_fixture("token_response.json")
@@ -216,7 +219,23 @@ def test_get_access_token_prefers_client_credentials_over_password(
     token = get_access_token(session=session)
 
     assert token == fixture["access_token"]
-    assert session.post_calls[0]["data"]["grant_type"] == "client_credentials"
+    call = session.post_calls[0]
+    assert call["data"]["grant_type"] == "password"
+    assert call["data"]["username"] == "env-user@example.com"
+
+
+def test_get_access_token_explicit_user_beats_env_client_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CDSE_CLIENT_ID", "env-client-id")
+    monkeypatch.setenv("CDSE_CLIENT_SECRET", "env-client-secret")
+    fixture = _load_fixture("token_response.json")
+    session = _RecordingSession(post_response=_FakeResponse(json_data=fixture))
+
+    token = get_access_token("user@example.com", "secret", session=session)
+
+    assert token == fixture["access_token"]
+    assert session.post_calls[0]["data"]["grant_type"] == "password"
 
 
 def test_get_access_token_no_token_in_response() -> None:
