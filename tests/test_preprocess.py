@@ -235,3 +235,35 @@ def test_read_grd_measurement_with_gcps(tmp_path: object) -> None:
     cropped = read_grd_measurement(meas.parent, "vv", bbox=(57.1, -20.4, 57.4, -20.1))
     assert cropped.sigma0.shape[0] < h and cropped.sigma0.shape[1] < w
     assert cropped.sigma0.size > 0
+
+
+def test_calibrate_safe_fallback_preserves_bbox(tmp_path, monkeypatch):
+    """When xarray-sentinel calibration fails, the read_grd_measurement fallback
+    must receive the same bbox so it never materialises a full-scene array."""
+    import xarray_sentinel  # noqa: F401  (patch target)
+    from affine import Affine
+    from rasterio.crs import CRS
+
+    from oilspill.pipeline import preprocess as pp
+
+    safe = tmp_path / "S1B_IW_GRDH_1SDV_20200810T013755_0001.SAFE"
+    safe.mkdir()
+    (safe / "manifest.safe").write_text("x", encoding="utf-8")
+
+    seen: dict = {}
+
+    def _boom(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("simulated calibration failure")
+
+    def _fake_read(*args: object, **kwargs: object) -> pp.CalibratedScene:
+        seen["kwargs"] = kwargs
+        return pp.CalibratedScene(
+            np.ones((4, 4), dtype=np.float32), Affine.identity(), CRS.from_epsg(4326)
+        )
+
+    monkeypatch.setattr("xarray_sentinel.open_sentinel1_dataset", _boom)
+    monkeypatch.setattr("oilspill.pipeline.preprocess.read_grd_measurement", _fake_read)
+
+    pp.calibrate_safe(safe, polarisation="vv", bbox=(57.0, -20.5, 57.9, -20.2))
+
+    assert seen["kwargs"].get("bbox") == (57.0, -20.5, 57.9, -20.2)

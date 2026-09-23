@@ -311,6 +311,7 @@ def calibrate_safe(
     safe_path: str | Path,
     *,
     polarisation: str = "vv",
+    bbox: tuple[float, float, float, float] | None = None,
 ) -> CalibratedScene:
     """Read a Sentinel-1 GRD SAFE and return calibrated sigma0 (linear power).
 
@@ -340,6 +341,10 @@ def calibrate_safe(
         Path to a ``.SAFE`` directory (or supported zip) for an S1 GRD product.
     polarisation:
         Polarisation channel, e.g. ``"vv"`` or ``"vh"`` (case-insensitive).
+    bbox:
+        Optional ``(west, south, east, north)`` window in EPSG:4326 degrees. When
+        given and xarray-sentinel calibration fails, the fallback read is cropped
+        to this window so it never materialises a full-scene array.
 
     Returns
     -------
@@ -380,7 +385,7 @@ def calibrate_safe(
             safe,
             exc,
         )
-        return read_grd_measurement(safe, polarisation=polarisation)
+        return read_grd_measurement(safe, polarisation=polarisation, bbox=bbox)
 
 
 def read_grd_measurement(
