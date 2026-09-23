@@ -21,7 +21,7 @@ app = create_app()
 def main() -> None:
     """Start the ASGI server."""
     # Bind all interfaces so the container is reachable; the deployment fronts it.
-    host = os.environ.get("HOST", "127.0.0.1")
+    host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "7860"))
     uvicorn.run(app, host=host, port=port)
 
