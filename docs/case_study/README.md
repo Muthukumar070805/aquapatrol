@@ -4,10 +4,19 @@ This case study runs the end-to-end Sentinel-1 detection pipeline on a real,
 documented oil-spill event and discusses the result honestly — including where the
 detection is good and where it falls short.
 
-![Sentinel-1 VV and detected oil over the Wakashio AOI](wakashio_detection.png)
+> **Pipeline status (September 2026).** The production pathway is now the YOLO
+> one-class `oil` candidate detector (`detector=yolo_mvp`, see
+> `../yolo_mvp.md`). The SegFormer segmentation numbers and artifacts below are
+> **legacy** — kept for provenance, produced by the retired five-class pipeline
+> (`scripts/run_case_study.py` no longer exists). Do not compare YOLO candidate
+> counts against the legacy polygon counts; they are different algorithms with
+> different outputs (bounding-box candidates vs pixel masks).
+
+![Legacy: Sentinel-1 VV and SegFormer oil pixels over the Wakashio AOI](wakashio_detection.png)
 
 *Left: Sentinel-1B VV backscatter (10 August 2020) over the spill area, south-east
-Mauritius. Right: oil pixels detected by the SegFormer model (cyan).*
+Mauritius. Right: oil pixels detected by the retired SegFormer model (cyan).
+Image kept as a historical reference.*
 
 ## The event (verified facts)
 
@@ -28,27 +37,49 @@ like in SAR.
 > Note on quantitative comparison: we deliberately do **not** quote a single
 > "official" spilled-area figure in km². A specific area value surfaced in
 > secondary summaries could not be confirmed against the primary source, so it is
-> excluded rather than cited unverified. We therefore compare our detection
-> qualitatively (location, morphology, plausibility) against the published
-> dark-patch mapping, and report our own measured area as a pipeline output.
+> excluded rather than cited unverified. Compare detections qualitatively
+> (location, morphology, plausibility) against the published dark-patch mapping.
 
-## What the pipeline did
+## Reproduce with the current YOLO pathway
 
-- **Scene** — `S1B_IW_GRDH_1SDV_20200810T013755_..._02B625` (Sentinel-1B, IW, GRDH,
-  dual-pol; VV used), acquired **10 August 2020**, found and downloaded directly
-  from the Copernicus Data Space Ecosystem via this project's `ingest` module.
-- **Preprocess** — read the VV measurement, cropped to the Pointe d'Esny AOI
-  (≈ 28 × 33 km), Lee speckle filter, conversion to (relative) decibels, and a
-  percentile-based normalisation into the model's input range.
-- **Inference** — tiled inference with the selected best model (SegFormer mit-b2,
-  exported to ONNX), logit-averaged over overlapping tiles.
-- **Vectorise** — oil-class pixels converted to polygons with per-polygon area
-  (km²) and confidence.
+No downloaded scene is committed (scenes are GB-scale and gitignored under
+`data/scenes/`). You need CDSE credentials in `.env` (`CDSE_USER`/`CDSE_PASS`
+account login preferred for downloads; see `.env.example`).
 
-Reproduce with: `python scripts/run_case_study.py` (after downloading the scene to
-`data/scenes/`).
+**Option A — Scene Monitor UI.** Open the frontend, set the AOI to the Pointe
+d'Esny box and the date window below, then queue the job:
 
-## Result
+| Field | Value |
+|---|---|
+| AOI bbox (west, south, east, north) | `57.58, -20.52, 57.85, -20.32` (≈ 28 × 33 km) |
+| Start | `2020-08-05` |
+| End | `2020-08-15` (brackets the 10 Aug 2020 acquisition) |
+| Detector | `yolo_mvp` (forced) |
+
+Expect `queued → running` (scene download takes minutes) `→ done`, with
+candidate boxes drawn on the map and a GeoJSON of `SPILL_xxx` features
+(`spill_id`, WGS84 `latitude`/`longitude`, `model_confidence`,
+`investigation_confidence`). YOLO hits are **investigation candidates, never
+confirmed spills**.
+
+**Option B — CLI** (same AOI as a GeoJSON file):
+
+```sh
+uv run python scripts/detect.py --aoi aoi-wakashio.geojson \
+  --start 2020-08-05 --end 2020-08-15 \
+  --weights artifacts/yolo/best.pt --out outputs/wakashio
+```
+
+The reference scene is `S1B_IW_GRDH_1SDV_20200810T013755_..._02B625`
+(Sentinel-1B, IW GRDH, VV used), acquired **10 August 2020**.
+
+**Continuing the demo story.** This event is wired into the prototype's
+downstream defaults: the Hindcast page pre-fills the Wakashio slick
+(`-20.44, 57.72`, `2020-07-25T04:35:00Z`, `3.1 km²`), and the deterministic
+demo vessels/cases seed the same origin. A Scene Monitor candidate's lat/lon
+feeds Hindcast → Vessels → Case → Report for the full investigation narrative.
+
+## Legacy result (retired SegFormer pipeline, kept for provenance)
 
 | Quantity | Value |
 |---|---|
@@ -57,12 +88,17 @@ Reproduce with: `python scripts/run_case_study.py` (after downloading the scene 
 | Mean polygon confidence | ~0.90 |
 | Detection location | along the SE Mauritius coast / Blue Bay lagoon — consistent with the documented spill |
 
-The model places oil in the **right location** — hugging the south-east coastline
-and lagoon around Pointe d'Esny, exactly where the Wakashio oil grounded and
-spread — with high per-polygon confidence. As a qualitative detection on a real,
-previously-unseen Sentinel-1 scene, this works.
+Machine-readable: `wakashio_summary.json` (legacy fields preserved; `status`
+marks it as non-current). Geometries: `wakashio_oil_polygons.geojson`
+(28 features with `area_km2`, `mean_confidence`, `max_confidence`).
 
-## Honest discussion of errors and limitations
+The legacy discussion below is retained verbatim because its caveats
+(uncalibrated radiometry, training-to-scene domain gap, approximate
+GCP geolocation, coastal SAR complexity) apply equally to the YOLO pathway —
+see also the dB-window validation warning in `../yolo_mvp.md`, which is the
+current form of the domain-gap risk.
+
+## Honest discussion of errors and limitations (retained)
 
 The detected area should be read as a lower-bound, approximate figure, for several
 documented reasons:
@@ -73,25 +109,22 @@ documented reasons:
    amplitude → relative intensity). The decibel scale is therefore *relative*, and
    the normalisation window was fitted from scene percentiles rather than matched
    to the absolute statistics of the training data.
-2. **Domain gap.** The model was trained on the MKLab dataset's preprocessed 8-bit
-   JPEG SAR chips, not on raw calibrated Sentinel-1 scenes. The appearance of oil
-   (contrast, speckle, dynamic range) differs between the two domains; thin sheen
-   and the faint edges of the slick are the first thing missed under this shift,
-   which biases the measured area downward.
+2. **Domain gap.** The model was trained on preprocessed 8-bit SAR chips, not on
+   raw calibrated Sentinel-1 scenes. The appearance of oil (contrast, speckle,
+   dynamic range) differs between the two domains; thin sheen and the faint edges
+   of the slick are the first thing missed under this shift, which biases the
+   measured area downward. For YOLO specifically, the `-25, 0` dB rendering window
+   is the unvalidated bridge — flag any change there as risky.
 3. **Geolocation is approximate.** Georeferencing uses an affine fitted to the
    product's ground-control points, which only approximates the true range/azimuth
    geometry of a GRD product (good to within a small number of pixels, not exact),
-   so polygon areas carry a corresponding uncertainty.
+   so polygon areas carry a corresponding uncertainty. YOLO candidate polygons are
+   additionally tagged `derived_contour`/`approximate` (or `bbox_fallback`).
 4. **Coastal complexity.** The spill is nearshore and partly inside a lagoon, where
    land, surf, and shallow-water effects make SAR oil discrimination harder than in
-   the open-ocean scenes the model was trained on.
-
-The right way to close this gap is documented in `docs/metrics.md` and the
-preprocessing notes: calibrate to true sigma-nought, and fit the dB→model window
-against the training histogram. Those are the natural next steps; this case study
-shows the pipeline runs end-to-end on real Copernicus data and detects the event
-in the correct place, while being candid that an exact area match would require the
-radiometric work above.
+   the open-ocean scenes the model was trained on. The YOLO detector mitigates
+   with land-overlap penalties in its heuristic `investigation_confidence` — a
+   ranking aid, not a probability.
 
 ## Sources
 

@@ -5,5 +5,8 @@
   "model": "segformer-mit-b2",
   "num_oil_polygons": 28,
   "total_oil_area_km2": 6.915424264380775,
-  "note": "Detected oil over the Pointe d'Esny AOI. Uncalibrated-DN preprocessing fallback; see README.md for method and limitations."
+  "note": "Legacy SegFormer result (retired pipeline). Current pathway is YOLO yolo_mvp; see README.md for reproduction via Scene Monitor.",
+  "status": "legacy-segformer",
+  "current_pathway": "yolo_mvp",
+  "suggested_window": ["2020-08-05", "2020-08-15"]
 }
