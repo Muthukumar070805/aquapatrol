@@ -1,0 +1,23 @@
+# Local run of the full application (API + built frontend) on the Hugging Face
+# Spaces port (7860). Build and start with: `docker compose up --build`.
+services:
+  oilspill:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: oilspill-app
+    ports:
+      - "7860:7860"
+    environment:
+      # YOLO weights are required for detection. Either mount a local
+      # checkpoint or point at a published one (uncomment once published):
+      # OILSPILL_YOLO_HF_REPO: user/oil-spill-yolo
+      # OILSPILL_YOLO_HF_FILE: best.pt
+      # - ./path/to/best.pt:/app/artifacts/yolo/best.pt:ro
+      PORT: "7860"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:7860/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
