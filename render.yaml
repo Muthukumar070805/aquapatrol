@@ -1,0 +1,35 @@
+# Render Blueprint (FREE tier): https://render.com/docs/blueprint-spec
+# Free web services: 512 MB RAM, spin down after ~15 min idle, slow cold starts.
+# YOLO inference may OOM on Free — see docs/deploy-render.md.
+
+services:
+  - type: web
+    name: oilspill
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: OILSPILL_API_WEB_DIST
+        value: /app/web/dist
+      - key: OILSPILL_API_YOLO_WEIGHTS
+        value: /app/artifacts/yolo/best.pt
+      # Smaller tiles reduce peak RAM during inference (important on Free 512 MB)
+      - key: OILSPILL_API_YOLO_TILE_SIZE
+        value: "640"
+      - key: OILSPILL_API_YOLO_TILE_OVERLAP
+        value: "64"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+      - key: TORCH_NUM_THREADS
+        value: "1"
+      - key: CDSE_USER
+        sync: false
+      - key: CDSE_PASS
+        sync: false

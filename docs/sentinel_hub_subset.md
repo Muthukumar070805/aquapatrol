@@ -1,112 +1,98 @@
-# Sentinel Hub Subset API — try later
+# Sentinel Hub Subset API — skipped-download Scene Fetching (try later)
 
 ## Goal
 
-Skip the multi-GB full-scene download in Scene Monitor by fetching only the
-AOI as a small processed image via the CDSE **Sentinel Hub process API**
-(`sentinel-1-grd`). Status: **researched, not implemented** (verified against
-CDSE docs 2026-09-23; no code changes made yet).
+Skip the multi-GB full-scene download in Scene Monitor by fetching only the AOI
+as a small processed image via the CDSE **Sentinel Hub process API**
+(`sentinel-1-grd`).
 
-## Why this exists
-
-The current Scene Monitor path (`_download_safe_for_aoi`) always downloads the
-entire Sentinel-1 product ZIP (1–4 GB) before reading the AOI. On 2026-09-23 a
-16673×26016 scene additionally OOM-killed the float64 filter chain
-(`lee_filter` holds ~6 full-scene float64 arrays ≈ 19 GiB). The subset API
-returns megabytes instead of gigabytes and sidesteps both problems.
-
-## Verified API contract (CDSE docs)
+## Verified API contract (CDSE docs, checked 2026-09-23)
 
 - Endpoint: `POST https://sh.dataspace.copernicus.eu/process/v1`
-- Auth: `Authorization: Bearer <token>` where the token comes from the
-  **client-credentials grant** with a dashboard OAuth client — i.e. the
-  existing `aquapatrol` pair (`CDSE_CLIENT_ID` / `CDSE_CLIENT_SECRET`).
-  No account password needed. (Ironic but verified: the token that the OData
-  *download* endpoint rejects with 401 is exactly the token Sentinel Hub
-  expects.)
-- Request body keys: `input.bounds.bbox` + `input.bounds.properties.crs`,
-  `input.data[]` with `type: "sentinel-1-grd"` and `dataFilter` (`timeRange`,
-  `acquisitionMode`, `polarization`, `resolution`, `orbitDirection`,
-  `timeliness`), `output.width/height`, `output.responses[].format.type`,
-  `evalscript` (JavaScript, `//VERSION=3`).
-- Response: binary image (`image/tiff`, `image/png`, …) at the requested size.
+- Auth: `Authorization: Bearer <OAuth client-credentials token>` — the existing
+  `aquapatrol` OAuth client (`CDSE_CLIENT_ID`/`CDSE_CLIENT_SECRET`) is the right
+  credential for this endpoint (no account password needed).
+- Request selects `input.data[].type = "sentinel-1-grd"` with:
+  - `input.bounds.bbox = [W, S, N, E]` + CRS `http://www.opengis.net/def/crs/EPSG/0/4326`
+  - `dataFilter.timeRange.from/to` (ISO `Z`)
+  - `dataFilter.acquisitionMode = "IW"`, `polarization = "DV"` (VV+VH),
+    `resolution = "HIGH"`, `orbitDirection` optional
+  - `evalscript` (JavaScript `//VERSION=3`) returning calibrated VV
+  - `output.width/height` (e.g. 2048×2048) + `responses[].format.type = "image/tiff"`
 
-## Ready-to-adapt request template (Wakashio genuine case)
+## Wakashio reference request (AOI + window from `docs/case_study/`)
 
-```python
-request = {
-    "input": {
-        "bounds": {
-            "bbox": [57.58, -20.52, 57.85, -20.32],  # W, S, E, N (Pointe d'Esny)
-            "properties": {"crs": "http://www.opengis.net/def/crs/EPSG/0/4326"},
-        },
-        "data": [
-            {
-                "type": "sentinel-1-grd",
-                "dataFilter": {
-                    "timeRange": {
-                        "from": "2020-08-05T00:00:00Z",
-                        "to": "2020-08-15T00:00:00Z",
-                    },
-                    "acquisitionMode": "IW",
-                    "polarization": "DV",
-                    "resolution": "HIGH",
-                },
-            }
-        ],
+```json
+{
+  "input": {
+    "bounds": {
+      "bbox": [57.58, -20.52, 57.85, -20.32],
+      "properties": {"crs": "http://www.opengis.net/def/crs/EPSG/0/4326"}
     },
-    "output": {
-        "width": 2048,
-        "height": 2048,
-        "responses": [{"identifier": "default", "format": {"type": "image/tiff"}}],
-    },
-    "evalscript": "//VERSION=3\n"
-    "function setup() { return { input: ['VV'], output: { bands: 1 } }; }\n"
-    "function evaluatePixel(s) { return [s.VV]; }",
+    "data": [
+      {
+        "type": "sentinel-1-grd",
+        "dataFilter": {
+          "timeRange": {"from": "2020-08-05T00:00:00Z", "to": "2020-08-15T23:59:59Z"},
+          "acquisitionMode": "IW",
+          "polarization": "DV",
+          "resolution": "HIGH"
+        }
+      }
+    ]
+  },
+  "output": {
+    "width": 2048,
+    "height": 2048,
+    "responses": [{"identifier": "default", "format": {"type": "image/tiff"}}]
+  },
+  "evalscript": "//VERSION=3\nfunction setup() { return { input: [{ bands: [\"VV\"] }], output: { bands: 1, sampleType: SampleType.FLOAT32 } }; }\nfunction evaluatePixel(s) { return [s.VV]; }"
 }
-
-headers = {"Authorization": f"Bearer {token}"}  # client-credentials token
-response = requests.post(
-    "https://sh.dataspace.copernicus.eu/process/v1",
-    headers=headers,
-    json=request,
-    timeout=120,
-)
-response.raise_for_status()
-open("wakashio_subset.tiff", "wb").write(response.content)
 ```
 
-## Honest trade-offs (do not skip)
+```sh
+curl -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @sh_request.json https://sh.dataspace.copernicus.eu/process/v1 \
+  -o wakashio_subset.tif
+```
 
-1. **Different pixels.** SH returns processed/orthorectified backscatter, not
-   raw SAFE measurement. The YOLO dB-window domain-gap caveat applies in a new
-   form — treat first results as experimental and sanity-check against the
-   known Wakashio location (SE coast / Blue Bay lagoon).
-2. **Quota.** Free-tier processing units are limited: fine for a demo handful
-   of requests, not bulk monitoring.
-3. **Resolution.** Use `HIGH` to stay near native IW resolution.
-4. Rejected alternatives: S3 range-reads (need S3 keys we don't have), COG
-   streaming (per-product availability uncertain; code currently deprioritizes
-   `_COG`), HTTP Range on the ZIP (cannot spatially subset a measurement TIFF).
+Get `$ACCESS_TOKEN` via the existing client-credentials flow
+(`CDSE_CLIENT_ID`/`CDSE_CLIENT_SECRET` against the CDSE Keycloak token
+endpoint); tokens are short-lived (~10–30 min), fetch fresh per request.
 
-## Implementation sketch (when building)
+## Trade-offs (read before trusting results)
 
-1. New module `src/oilspill/pipeline/sentinel_hub.py`:
-   `fetch_s1_subset(bbox, time_range, token, size=2048) -> Path` (GeoTIFF).
-   Reuse `get_access_token()` client-credentials flow — no new credentials.
-2. Wire as a Scene Monitor option (`source: "full_scene" | "fast_subset"`),
-   keeping the full-scene path as fallback. No new dependencies
-   (`requests` already in use).
-3. Tests: recorded-response tests for request shape + TIFF parsing
-   (never hit the live API in tests); live smoke test manually once.
-4. Acceptance: Wakashio AOI returns a ≤50 MB TIFF that renders dark
-   sea with the slick visible near Pointe d'Esny; YOLO runs on it without OOM.
+1. **Different pixels**: Sentinel Hub returns processed/orthorectified backscatter,
+   not raw SAFE measurement. The YOLO `-25, 0` dB rendering window was bridged
+   against raw scenes — treat first subset results as experimental and validate
+   location/plausibility against the known Wakashio position before trusting
+   counts/areas.
+2. **Quota**: free-tier processing units are limited — fine for a demo handful of
+   requests, not bulk monitoring.
+3. **Coverage**: the API returns the best match in the window (mosaickingOrder);
+   confirm the acquisition date in the response before presenting results.
+4. Alternatives considered and rejected: S3 range-reads (need S3 keys we don't
+   have), HTTP Range on the product ZIP (cannot spatially subset a measurement
+   TIFF), COG streaming (availability varies per product; codebase currently
+   deprioritizes `_COG` products).
 
-## References
+## Implementation sketch (when scheduled)
 
-- CDSE Sentinel Hub `sentinel-1-grd` data + `POST /process/v1` + `client_credentials`
-  auth docs (via Context7, 2026-09-23).
-- OOM incident: 16673×26016 float64 chain, `src/oilspill/pipeline/preprocess.py`
-  `lee_filter` — see AOI-first windowing analysis (companion fix, still open).
-- Genuine-case inputs: `docs/case_study/` (AOI `[57.58, -20.52, 57.85, -20.32]`,
-  window `2020-08-05 → 2020-08-15`).
+- New `src/oilspill/pipeline/sentinel_hub.py`: `fetch_s1_subset(aoi, start, end,
+  token, *, width=2048, height=2048) -> Path` (GeoTIFF), raising
+  `requests.HTTPError` verbatim on non-2xx.
+- Wire as a Scene Monitor fetch option ("fast subset" vs "full scene") reusing
+  the OAuth token flow; subset GeoTIFF enters the existing
+  filter → dB → YOLO chain unchanged.
+- Tests with recorded responses only (never live network in suite); no new
+  Python dependencies (`requests` already present).
+- Acceptance: Wakashio AOI request returns a 2048×2048 VV TIFF in MBs;
+  pipeline runs end-to-end on it without the full-scene download or the
+  float64 OOM class.
+
+## Status
+
+- [ ] Tried against live API
+- [ ] Validated YOLO response on subset imagery
+- [ ] Wired into Scene Monitor

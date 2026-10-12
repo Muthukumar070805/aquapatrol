@@ -27,4 +27,22 @@ print("downloaded", dest)
 PY
 fi
 
+WEIGHTS_PATH="${OILSPILL_API_YOLO_WEIGHTS:-/app/artifacts/yolo/best.pt}"
+python - <<'PY' || true
+import os
+import sys
+from pathlib import Path
+
+weights = Path(os.environ.get("OILSPILL_API_YOLO_WEIGHTS", "/app/artifacts/yolo/best.pt"))
+if not weights.is_file():
+    print(f"warning: YOLO weights missing at {weights} — /yolo/* will return 503", file=sys.stderr)
+else:
+    print(f"YOLO weights present ({weights.stat().st_size // 1024} KiB): {weights}")
+try:
+    import ultralytics  # noqa: F401
+    print("ultralytics import ok")
+except ImportError:
+    print("warning: ultralytics not installed — install yolo extra", file=sys.stderr)
+PY
+
 exec "$@"

@@ -9,7 +9,7 @@ repos:
         args: [--maxkb=900]
         # The tracked YOLO serving checkpoint (42MB) is intentional; the cap
         # still applies to everything else.
-        exclude: ^oil-spill-detection/artifacts/yolo/
+        exclude: ^artifacts/yolo/best\.pt$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.17

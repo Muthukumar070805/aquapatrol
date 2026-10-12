@@ -101,6 +101,7 @@ uv run python scripts/detect.py --aoi aoi.geojson --start 2024-01-01 --end 2024-
 
 ## Documentation
 
+- [`docs/deploy-render.md`](docs/deploy-render.md) — deploy on Render + GoDaddy DNS.
 - [`docs/yolo_mvp.md`](docs/yolo_mvp.md) — detector contract, configuration,
   and confidence heuristics.
 - [`docs/hindcast.md`](docs/hindcast.md) — drift-backtrack input schema.

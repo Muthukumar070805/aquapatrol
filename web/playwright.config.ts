@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Builds the app and serves it with `vite preview`. The API is fully mocked via
-// route interception inside the test, so no backend is required.
+// Uses the Vite dev server so no full TypeScript build is needed.
+// The API is fully mocked via route interception inside the tests,
+// so no backend is required.
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -9,16 +10,16 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"]],
   use: {
-    baseURL: "http://localhost:4173",
+    baseURL: "http://localhost:5173",
     trace: "on-first-retry",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
   ],
   webServer: {
-    command: "npm run build && npm run preview -- --port 4173 --strictPort",
-    url: "http://localhost:4173",
+    command: "npm run dev -- --port 5173 --strictPort",
+    url: "http://localhost:5173",
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 60_000,
   },
 });

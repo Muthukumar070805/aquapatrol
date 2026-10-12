@@ -267,3 +267,41 @@ def test_calibrate_safe_fallback_preserves_bbox(tmp_path, monkeypatch):
     pp.calibrate_safe(safe, polarisation="vv", bbox=(57.0, -20.5, 57.9, -20.2))
 
     assert seen["kwargs"].get("bbox") == (57.0, -20.5, 57.9, -20.2)
+
+
+# --------------------------------------------------------------------------- #
+# float32 working set (memory regression guard)
+# --------------------------------------------------------------------------- #
+def test_lee_filter_returns_float32() -> None:
+    rng = np.random.default_rng(0)
+    img32 = rng.random((256, 256)).astype(np.float32)
+    out = lee_filter(img32)
+    assert out.dtype == np.float32
+    # float64 inputs are normalised to float32, never inflated.
+    out64 = lee_filter(rng.random((64, 64)))
+    assert out64.dtype == np.float32
+
+
+def test_lee_filter_float32_halves_working_memory() -> None:
+    """No float64 working set may survive the filter: outputs occupy float32
+    memory regardless of input dtype.
+
+    (Tracemalloc cannot observe this — it only tracks Python allocations,
+    while the filter's working set is NumPy/C-level — so the guarantee is
+    asserted via the observable output dtype and size instead.)
+    """
+    rng = np.random.default_rng(0)
+    img64 = rng.random((2048, 2048))
+
+    out64 = lee_filter(img64)
+    out32 = lee_filter(img64.astype(np.float32))
+
+    assert out64.dtype == np.float32
+    assert out32.dtype == np.float32
+    assert out64.nbytes == out32.nbytes == img64.astype(np.float32).nbytes
+
+
+def test_to_db_returns_float32() -> None:
+    out = to_db(np.array([1.0, 10.0, 100.0], dtype=np.float64))
+    assert out.dtype == np.float32
+    assert out == pytest.approx([0.0, 10.0, 20.0])

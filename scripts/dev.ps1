@@ -34,6 +34,41 @@ if (-not $FrontendOnly) {
     Start-Process -NoNewWindow uv -ArgumentList "run", "python", "scripts/serve.py"
     Write-Host "Backend starting on http://localhost:7860 (health: http://localhost:7860/healthz)"
 }
+function Test-Esbuild {
+    # require() alone only loads the JS wrapper; transformSync spawns the
+    # platform binary, which is the part that breaks cross-OS copies.
+    # A failing probe must return $false, not trip $ErrorActionPreference=Stop.
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        node -e "require('esbuild').transformSync('1+1',{loader:'js'})" >$null 2>&1
+        return $?
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
+function Repair-NodeModules {
+    Push-Location -LiteralPath (Join-Path $Root "web")
+    try {
+        if (Test-Esbuild) { Write-Host "esbuild OK."; return }
+        Write-Host "esbuild binary broken (wrong platform) - reinstalling web/node_modules."
+        Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force
+        Start-Sleep -Seconds 2
+        Remove-Item -Recurse -Force node_modules -ErrorAction Stop
+        npm install
+        if (-not (Test-Esbuild)) {
+            Write-Host "Still broken after reinstall. Suspects: OneDrive on-demand sync or npm cache."
+            Write-Host "Try: npm cache clean --force, then delete web/node_modules and retry."
+            exit 1
+        }
+    } finally { Pop-Location }
+}
+
 if (-not $BackendOnly) {
+    Repair-NodeModules
     Assert-PortFreeOrOwn 5173 "vite|node"
+    Start-Process -NoNewWindow cmd -ArgumentList "/c", "npm", "run", "dev", "--", "--port", "5173", "--strictPort" `
+        -WorkingDirectory (Join-Path $Root "web")
+    Write-Host "Frontend starting on http://localhost:5173"
 }

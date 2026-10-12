@@ -114,14 +114,16 @@ def lee_filter(image: np.ndarray, size: int = 7) -> np.ndarray:
     Returns
     -------
     np.ndarray
-        Filtered image, same shape as ``image``, dtype ``float64``.
+        Filtered image, same shape as ``image``, dtype ``float32`` (inputs of
+        any float dtype are normalised down, never inflated, so the working
+        set stays at half the size of a float64 pipeline).
     """
     if image.ndim != 2:
         raise ValueError(f"lee_filter expects a 2-D array, got shape {image.shape}")
     if size < 1:
         raise ValueError(f"window size must be >= 1, got {size}")
 
-    img = np.asarray(image, dtype=np.float64)
+    img = np.asarray(image, dtype=np.float32)
 
     # Local mean and local mean-of-squares -> local variance, via a box filter.
     local_mean = uniform_filter(img, size=size)
@@ -161,11 +163,11 @@ def to_db(sigma0: np.ndarray, eps: float = DEFAULT_DB_EPS) -> np.ndarray:
     Returns
     -------
     np.ndarray
-        Backscatter in dB, dtype ``float64``.
+        Backscatter in dB, dtype ``float32``.
     """
     if eps <= 0.0:
         raise ValueError(f"eps must be positive, got {eps}")
-    arr = np.asarray(sigma0, dtype=np.float64)
+    arr = np.asarray(sigma0, dtype=np.float32)
     return 10.0 * np.log10(np.maximum(arr, eps))
 
 

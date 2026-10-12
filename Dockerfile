@@ -40,12 +40,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY scripts/ ./scripts/
 COPY data/samples/ ./data/samples/
 COPY --from=web /web/dist ./web/dist
+# Committed serving checkpoint (see .dockerignore exceptions). Omit from private
+# forks and use OILSPILL_YOLO_HF_* at startup instead.
+COPY artifacts/yolo/best.pt ./artifacts/yolo/best.pt
 
-# YOLO weights are not baked into the image (checkpoints live outside git or on
-# the Hugging Face Hub, not in the build context). The entrypoint fetches them
-# at startup when OILSPILL_YOLO_HF_REPO is set; without weights the API still
-# serves and YOLO endpoints return a clear 503 until weights are provided
-# (e.g. by mounting them to OILSPILL_API_YOLO_WEIGHTS).
+# If best.pt is not in the build context, the entrypoint can fetch weights from
+# the Hugging Face Hub when OILSPILL_YOLO_HF_REPO is set.
 # Put the synced virtualenv on PATH and use it directly. We invoke the venv's
 # python rather than `uv run` so the container never tries to re-sync (which would
 # pull the dev/ml groups) at startup.
@@ -55,8 +55,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
 RUN mkdir -p /app/artifacts/yolo
 
 EXPOSE 7860
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:7860/healthz').status==200 else 1)"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+    CMD python -c "import os,urllib.request,sys; p=os.environ.get('PORT','7860'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/healthz').status==200 else 1)"
 
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh

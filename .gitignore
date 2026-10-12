@@ -5,6 +5,8 @@ _pm/
 .env
 .env.*
 !.env.example
+*[Cc]redential*
+Credienticals.txt
 
 # --- python ---
 __pycache__/
@@ -22,8 +24,10 @@ venv/
 coverage.xml
 htmlcov/
 .pyright/
+.cache/
+.huggingface/
 
-# --- data & artifacts (tracked: README, checksums, small samples) ---
+# --- data & artifacts (tracked: README, checksums, small samples, yolo weights) ---
 data/*
 !data/README.md
 !data/checksums.sha256
@@ -37,11 +41,25 @@ outputs/
 prototype.db
 *.db-shm
 *.db-wal
-Credienticals.txt
 
 # --- frontend ---
 node_modules/
 web/dist/
+*.tsbuildinfo
+web/playwright-report/
+web/test-results/
+web/blob-report/
+npm-debug.log*
+*.log
+
+# --- agent / IDE / local notes ---
+.opencode/
+workspace-notes-local/
+graphify-out/
+.cursor/
+AGENTS-root-note.md
+PROJECT_COMPREHENSIVE_EXPLANATION.md
+oil-spill-detection/
 
 # --- editors/os ---
 .vscode/

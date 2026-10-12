@@ -9,6 +9,8 @@ _pm
 web/node_modules
 web/dist
 artifacts
+!artifacts/yolo
+!artifacts/yolo/best.pt
 mlruns
 data/raw
 data/scenes
@@ -17,6 +19,7 @@ outputs
 .env
 *.onnx
 *.pt
+!artifacts/yolo/best.pt
 *.h5
 tests
 notebooks
