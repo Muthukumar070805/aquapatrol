@@ -35,6 +35,12 @@ COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra yolo
 
+# ultralytics pulls opencv-python (GUI variant), whose shared libs are absent
+# from slim. Without these, `import cv2` fails (libxcb.so.1) and detection 500s.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 libxcb1 \
+ && rm -rf /var/lib/apt/lists/*
+
 # Application code, the built frontend, and the small committed assets the API
 # serves: preloaded sample images (/samples).
 COPY scripts/ ./scripts/
